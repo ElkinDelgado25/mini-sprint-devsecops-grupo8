@@ -1,11 +1,27 @@
-"""API de laboratorio con vulnerabilidades intencionales. Solo para uso local."""
-from flask import Flask, jsonify, request
+"""API de laboratorio. Solo para uso local."""
+import hmac
+import os
 import sqlite3
 from pathlib import Path
 
+from dotenv import load_dotenv
+from flask import Flask, jsonify, request
+
+load_dotenv()
+
 app = Flask(__name__)
-DB_PATH = Path(__file__).with_name("practica.db")
-API_KEY = "API_KEY_DEMO_NO_USAR_EN_PRODUCCION"
+DB_PATH = Path(os.environ.get("DB_PATH", Path(__file__).with_name("practica.db")))
+
+
+def require_env(name):
+    """Lee un secreto obligatorio desde el entorno; la API no arranca sin él."""
+    value = os.environ.get(name)
+    if not value:
+        raise RuntimeError(f"Falta la variable de entorno {name}. Copia .env.example a .env y complétala.")
+    return value
+
+
+API_KEY = require_env("API_KEY")
 
 
 def init_db():
@@ -15,9 +31,12 @@ def init_db():
             "CREATE TABLE IF NOT EXISTS users "
             "(id INTEGER PRIMARY KEY, username TEXT, password TEXT)"
         )
-        conn.execute(
-            "INSERT OR IGNORE INTO users (id, username, password) VALUES "
-            "(1, 'admin', 'AdminDemo123!'), (2, 'estudiante', 'Practica123!')"
+        conn.executemany(
+            "INSERT OR REPLACE INTO users (id, username, password) VALUES (?, ?, ?)",
+            [
+                (1, "admin", require_env("DEMO_ADMIN_PASSWORD")),
+                (2, "estudiante", require_env("DEMO_STUDENT_PASSWORD")),
+            ],
         )
 
 
@@ -28,8 +47,9 @@ def health():
 
 @app.get("/api/profile")
 def profile():
-    # Vulnerabilidad intencional: secreto fijo en el código.
-    if request.headers.get("X-API-Key") != API_KEY:
+    provided = request.headers.get("X-API-Key", "")
+    # Comparación en tiempo constante para no filtrar la clave por tiempos de respuesta.
+    if not hmac.compare_digest(provided.encode(), API_KEY.encode()):
         return jsonify(error="No autorizado"), 401
     return jsonify(user="admin", message="Acceso de demostración")
 
