@@ -1,4 +1,4 @@
-"""API de laboratorio. Solo para uso local."""
+"""API de laboratorio remediada. Solo para uso local."""
 import hmac
 import os
 import sqlite3
@@ -6,6 +6,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from flask import Flask, jsonify, request
+from werkzeug.security import check_password_hash, generate_password_hash
 
 load_dotenv()
 
@@ -25,18 +26,21 @@ API_KEY = require_env("API_KEY")
 
 
 def init_db():
-    """Crea datos ficticios para probar el endpoint de autenticación."""
+    """Crea los usuarios de demostración guardando solo el hash de su contraseña."""
+    users = [
+        (1, "admin", require_env("DEMO_ADMIN_PASSWORD")),
+        (2, "estudiante", require_env("DEMO_STUDENT_PASSWORD")),
+    ]
     with sqlite3.connect(DB_PATH) as conn:
+        # La tabla heredada guardaba contraseñas en texto plano: se recrea con hashes.
+        conn.execute("DROP TABLE IF EXISTS users")
         conn.execute(
-            "CREATE TABLE IF NOT EXISTS users "
-            "(id INTEGER PRIMARY KEY, username TEXT, password TEXT)"
+            "CREATE TABLE users ("
+            "id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL)"
         )
         conn.executemany(
-            "INSERT OR REPLACE INTO users (id, username, password) VALUES (?, ?, ?)",
-            [
-                (1, "admin", require_env("DEMO_ADMIN_PASSWORD")),
-                (2, "estudiante", require_env("DEMO_STUDENT_PASSWORD")),
-            ],
+            "INSERT INTO users (id, username, password_hash) VALUES (?, ?, ?)",
+            [(uid, name, generate_password_hash(password)) for uid, name, password in users],
         )
 
 
@@ -57,26 +61,24 @@ def profile():
 @app.post("/api/login")
 def login():
     data = request.get_json(silent=True) or {}
-    username = data.get("username", "")
-    password = data.get("password", "")
+    username = data.get("username")
+    password = data.get("password")
+    if not isinstance(username, str) or not isinstance(password, str):
+        return jsonify(error="username y password son obligatorios"), 400
 
-    # Vulnerabilidad intencional: SQL concatenado con datos del usuario.
-    query = (
-        "SELECT id, username FROM users WHERE username = '"
-        + username
-        + "' AND password = '"
-        + password
-        + "'"
-    )
+    # Consulta parametrizada: el dato del usuario nunca se concatena al SQL.
     with sqlite3.connect(DB_PATH) as conn:
-        row = conn.execute(query).fetchone()
+        row = conn.execute(
+            "SELECT id, username, password_hash FROM users WHERE username = ?",
+            (username,),
+        ).fetchone()
 
-    if row:
+    if row and check_password_hash(row[2], password):
         return jsonify(message="Login correcto", user={"id": row[0], "username": row[1]})
     return jsonify(error="Credenciales inválidas"), 401
 
 
 if __name__ == "__main__":
     init_db()
-    # Escucha solo en localhost. No publicar esta API vulnerable en Internet.
+    # Escucha solo en localhost. No publicar esta API en Internet.
     app.run(host="127.0.0.1", port=5000, debug=False)
