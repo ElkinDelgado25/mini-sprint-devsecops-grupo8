@@ -1,0 +1,53 @@
+name: DevSecOps Build Breaker
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: Secretos (detect-secrets)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install detect-secrets==1.5.0
+      - name: Buscar secretos nuevos frente al baseline
+        run: git ls-files -z -- . ':!:.secrets.baseline' ':!:README.md' | xargs -0 detect-secrets-hook --baseline .secrets.baseline
+
+  sast:
+    name: SAST (Bandit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install bandit
+      - name: Analisis estatico (falla con cualquier hallazgo)
+        run: bandit -r . -x ./.venv,./tests -f txt
+
+  sca:
+    name: SCA (pip-audit + SBOM CycloneDX)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install pip-audit cyclonedx-bom
+      - name: Generar SBOM (CycloneDX JSON)
+        run: cyclonedx-py requirements requirements.txt --of JSON -o sbom.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sbom-cyclonedx
+          path: sbom.json
+      - name: Auditar dependencias (falla si hay CVE)
+        run: pip-audit -r requirements.txt --strict --desc on
