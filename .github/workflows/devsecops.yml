@@ -34,6 +34,18 @@ jobs:
       - name: Analisis estatico (falla con cualquier hallazgo)
         run: bandit -r . -x ./.venv,./tests -f txt
 
+  tests:
+    name: Pruebas (pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - name: Pruebas funcionales y de seguridad
+        run: pytest -v
+
   sca:
     name: SCA (pip-audit + SBOM CycloneDX)
     runs-on: ubuntu-latest
