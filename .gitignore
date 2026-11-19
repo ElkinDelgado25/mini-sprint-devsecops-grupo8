@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+*.db
+.env
+sbom.json
+bandit-report.*
+pip-audit-report.*
+.pytest_cache/

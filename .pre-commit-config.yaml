@@ -1,0 +1,17 @@
+# Shift-Left: bloquea secretos antes de que lleguen al repositorio.
+# README.md es la documentación original del docente y no se modifica.
+repos:
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args: ["--baseline", ".secrets.baseline"]
+        exclude: ^(\.secrets\.baseline|README\.md)$
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-yaml
+      - id: end-of-file-fixer
+        exclude: ^README\.md$
+      - id: trailing-whitespace
+        exclude: ^README\.md$
